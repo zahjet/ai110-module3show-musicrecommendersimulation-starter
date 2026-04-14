@@ -11,25 +11,72 @@ Your goal is to:
 - Evaluate what your system gets right and wrong
 - Reflect on how this mirrors real world AI recommenders
 
-Replace this paragraph with your own summary of what your version does.
+This code uses song attributes like genre, mood, energy, tempo, valence, danceability, and acousticness to compare each track to a user's favorite genre and mood. The recommender assigns higher scores to songs that match the user's preferred genre and mood, while also rewarding songs whose energy is close to the user's target energy and that align with an acoustic preference.
 
 ---
 
 ## How The System Works
 
-Explain your design in plain language.
+This system is a simple content-based recommender. It focuses on song-level features rather than other users' behavior.
 
-Some prompts to answer:
+- Each `Song` uses these features:
+  - `genre`
+  - `mood`
+  - `energy`
+  - `tempo_bpm`
+  - `valence`
+  - `danceability`
+  - `acousticness`
+- Each `UserProfile` stores:
+  - `favorite_genre`
+  - `favorite_mood`
+  - `target_energy`
+  - `likes_acoustic`
 
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
+### Algorithm Recipe
 
-You can include a simple diagram or bullet list if helpful.
+The `Recommender` scores each song against a `UserProfile` using four weighted rules:
+
+| Rule | Condition | Points |
+|---|---|---|
+| Genre match | `song.genre == user.favorite_genre` | +2.0 |
+| Mood match | `song.mood == user.favorite_mood` | +1.0 |
+| Energy proximity | `max(0.0, 1.0 - abs(song.energy - user.target_energy))` | 0.0 – 1.0 |
+| Acoustic fit | `acousticness * 0.5` or `(1 - acousticness) * 0.5` | 0.0 – 0.5 |
+
+**Max possible score: 4.5**
+
+Genre is weighted highest because it defines the broadest sonic category. Mood is secondary. Energy uses a proximity formula so songs that are "close but not exact" still earn partial credit rather than zero.
+
+After scoring every song, the ranking rule sorts all scores descending and returns the top `k` results.
+
+### Biases
+
+- **Genre dominance:** Genre is worth +2.0 — double the mood weight. A song that perfectly matches the user's mood but is the wrong genre will consistently rank below an on-genre song with no mood match at all. Great cross-genre songs that match the user's vibe can get buried.
+- **Catalog size:** With only 18 songs, a user whose preferred genre has only one or two songs in the catalog gets a thin shortlist, even if other tracks would suit them well.
+- **Binary acoustic preference:** `likes_acoustic` is `True`/`False` with no gradient, so a user who "somewhat" likes acoustic tracks is treated identically to one who only wants pure acoustic recordings.
+- **Ignored features:** `valence`, `danceability`, and `tempo_bpm` are stored on every song but not used in scoring, meaning two songs with identical genre/mood/energy can score the same even if one feels twice as danceable.
+
+In a real product, systems combine this content-based signal with collaborative filtering — learning from what similar listeners liked or skipped — to reduce these blind spots.
 
 ---
+
+```mermaid
+flowchart TD
+    A([User Preferences\ngenre · mood · energy · likes_acoustic]) --> B[Build UserProfile]
+    C([data/songs.csv]) --> D[load_songs\nparse each row into a dict]
+    D --> E[For each song in catalog]
+    B --> E
+    E --> F{Score the song}
+    F --> F1[+2.0 if genre matches]
+    F --> F2[+1.0 if mood matches]
+    F --> F3[energy proximity\nmax 1.0 − distance]
+    F --> F4[acousticness bonus\nmax 0.5]
+    F1 & F2 & F3 & F4 --> G[Total score for this song]
+    G --> H[Collect all scored songs]
+    H --> I[Sort by score descending]
+    I --> J([Top K Recommendations\nsong · score · explanation])
+```
 
 ## Getting Started
 
@@ -65,6 +112,9 @@ pytest
 You can add more tests in `tests/test_recommender.py`.
 
 ---
+
+## Code Output
+![alt text](image.png)
 
 ## Experiments You Tried
 
